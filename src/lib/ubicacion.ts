@@ -12,10 +12,42 @@ export interface Ubicacion {
 
 export type ErrorUbicacion = "no-disponible" | "denegada" | "sin-senal";
 
+/** Pasos para dar el permiso, según el celular y el navegador que se usa. */
+export function pasosPermiso(): string[] {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const chromeIos = /CriOS/.test(ua);
+  const android = /Android/.test(ua);
+  if (ios && chromeIos)
+    return [
+      "Abre Ajustes del iPhone › Privacidad y seguridad › Localización, y revisa que esté activada.",
+      "En esa misma lista entra a Chrome y elige «Al usar la app». Activa «Ubicación exacta».",
+      "Vuelve aquí, recarga la página y toca «Intentar de nuevo».",
+    ];
+  if (ios)
+    return [
+      "Abre Ajustes del iPhone › Privacidad y seguridad › Localización, y revisa que esté activada.",
+      "En esa lista entra a «Sitios web de Safari» y elige «Al usar la app». Activa «Ubicación exacta».",
+      "En Safari, toca «aA» en la barra de dirección › Configuración del sitio web › Ubicación › Permitir.",
+      "Recarga la página y toca «Intentar de nuevo».",
+    ];
+  if (android)
+    return [
+      "Revisa que la ubicación del celular esté activada (desliza el panel de arriba y toca Ubicación).",
+      "En Chrome, toca el ícono a la izquierda de la dirección › Permisos › Ubicación › Permitir.",
+      "Si no aparece: Ajustes del celular › Aplicaciones › Chrome › Permisos › Ubicación › Permitir solo mientras se usa.",
+      "Recarga la página y toca «Intentar de nuevo».",
+    ];
+  return [
+    "Activa la ubicación del dispositivo.",
+    "Haz clic en el candado junto a la dirección › Permisos del sitio › Ubicación › Permitir.",
+    "Recarga la página y toca «Intentar de nuevo».",
+  ];
+}
+
 export const MENSAJE_UBICACION: Record<ErrorUbicacion, string> = {
   "no-disponible": "Aquí no se puede usar la ubicación del dispositivo.",
-  denegada:
-    "No hay permiso de ubicación. En iPhone: Ajustes › Privacidad › Localización › tu navegador › Al usar la app, y activa Ubicación exacta. En Android: toca el candado junto a la dirección › Permisos › Ubicación.",
+  denegada: "Tu celular no le está dando la ubicación a esta página, y por eso no te aparece la pregunta.",
   "sin-senal": "El GPS no respondió a tiempo. Acércate a una ventana o sal al aire libre y vuelve a medir.",
 };
 
@@ -63,6 +95,14 @@ class VigilanteGps {
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 },
     );
+  }
+
+  /** Vuelve a pedir la ubicación después de que la persona cambió el permiso. */
+  reintentar() {
+    this.detener();
+    this.error = null;
+    this.avisar();
+    this.iniciar();
   }
 
   detener() {

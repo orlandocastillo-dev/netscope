@@ -7,7 +7,7 @@ import { infoNavegador, medirRed, type Fase, type Progreso } from "../lib/medici
 import { categoria, explicaciones, NOMBRE_CATEGORIA } from "../lib/puntaje";
 import type { ServidorPruebas } from "../lib/servidor";
 import type { Medicion, Tecnologia, TipoRed } from "../lib/tipos";
-import { encenderSiHayPermiso, gps, MENSAJE_UBICACION, ubicacionDisponible, type ErrorUbicacion, type Ubicacion } from "../lib/ubicacion";
+import { encenderSiHayPermiso, gps, MENSAJE_UBICACION, pasosPermiso, ubicacionDisponible, type ErrorUbicacion, type Ubicacion } from "../lib/ubicacion";
 
 const NOMBRE_FASE: Record<Fase, string> = {
   preparando: "Preparando",
@@ -194,7 +194,7 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
         {esperandoGps && <p className="ayuda centro">La prueba terminó. Esperando al GPS para ubicar la medición en el mapa (hasta 30 s).</p>}
         {resultado && !midiendo && conGps && resultado.lat == null && (
           <p className="alerta">
-            Se guardó sin ubicación, así que no aparece en el mapa. {errorGps ? MENSAJE_UBICACION[errorGps] : MENSAJE_UBICACION["sin-senal"]}
+            Se guardó sin ubicación, así que no aparece en el mapa. {errorGps === "denegada" ? "Abajo, en «Esta prueba», están los pasos para activarla." : MENSAJE_UBICACION["sin-senal"]}
           </p>
         )}
       </section>
@@ -241,7 +241,7 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           <Fila nombre="Lugar" valor={lugarFinal} />
           <Fila nombre="Tipo de prueba" valor={ligera ? "Ligera, ~1,5 MB" : servidor?.subida ? "Normal, ~7 MB" : "Normal, ~5 MB"} />
         </dl>
-        {errorGps === "denegada" && <p className="nota">{MENSAJE_UBICACION.denegada}</p>}
+        {errorGps === "denegada" && <AyudaPermiso />}
         {posicion && posicion.precision > 40 && <p className="nota">El GPS está impreciso (±{posicion.precision} m). En interiores pasa seguido: acércate a una ventana.</p>}
 
         {ajustes && (
@@ -345,15 +345,11 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
                 </label>
               ))}
             </div>
-            {conGps && (
-              <p className={`hoja__gps${errorGps === "denegada" ? " hoja__gps--mal" : ""}`}>
-                {posicion
-                  ? `Ubicación lista (±${posicion.precision} m)`
-                  : errorGps === "denegada"
-                    ? MENSAJE_UBICACION.denegada
-                    : "Buscando tu ubicación… Si el navegador te pregunta, toca Permitir."}
-              </p>
-            )}
+            {conGps && errorGps === "denegada" ? (
+              <AyudaPermiso />
+            ) : conGps ? (
+              <p className="hoja__gps">{posicion ? `Ubicación lista (±${posicion.precision} m)` : "Buscando tu ubicación… Si el navegador te pregunta, toca Permitir."}</p>
+            ) : null}
             <button type="submit" className="pildora pildora--grande" disabled={!nombre.trim()}>
               Medir aquí
             </button>
@@ -373,6 +369,25 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           <Plano puntos={delLugar} seleccion={punto} onElegir={midiendo ? undefined : setPunto} etiqueta="Plano del lugar para marcar el punto de medición" />
         </section>
       )}
+    </div>
+  );
+}
+
+/** Qué hacer cuando el celular niega la ubicación sin preguntar: pasos para su sistema y navegador. */
+function AyudaPermiso() {
+  return (
+    <div className="permiso">
+      <p className="permiso__titulo">{MENSAJE_UBICACION.denegada}</p>
+      <p className="permiso__texto">Actívala así (toma un minuto):</p>
+      <ol className="permiso__pasos">
+        {pasosPermiso().map((p) => (
+          <li key={p}>{p}</li>
+        ))}
+      </ol>
+      <button type="button" className="pildora pildora--suave" onClick={() => gps.reintentar()}>
+        Intentar de nuevo
+      </button>
+      <p className="permiso__texto">Si mides sin ubicación, la medición se guarda igual pero no aparece en el mapa.</p>
     </div>
   );
 }
