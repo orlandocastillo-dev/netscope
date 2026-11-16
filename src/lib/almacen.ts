@@ -53,7 +53,9 @@ async function almacenClaude(): Promise<Almacen | null> {
 async function almacenServidor(): Promise<Almacen | null> {
   try {
     const r = await fetch("api/estado", { cache: "no-store" });
-    if (!r.ok || !(await r.json())?.netscope) return null;
+    const j = r.ok ? await r.json() : null;
+    // El servidor de Vercel no guarda mediciones (almacen: false): se quedan en el navegador
+    if (!j?.netscope || j.almacen === false) return null;
   } catch {
     return null;
   }

@@ -45,6 +45,9 @@ export async function detectarServidor(): Promise<ServidorPruebas> {
     const r = await conTiempo("api/estado", 2500);
     if (r.ok) {
       const j = await r.json();
+      // En Vercel: latencia y descarga contra los archivos del sitio (servidos desde su red),
+      // y la subida contra una función. Sin base de datos.
+      if (j?.netscope && j.almacen === false) return { ...ESTATICO, tipo: "api", nombre: "Servidor NetScope en Vercel", subida: () => `api/subida?r=${azar()}` };
       if (j?.netscope) return API;
     }
   } catch {
