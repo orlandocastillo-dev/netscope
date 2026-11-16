@@ -64,6 +64,7 @@ type Oyente = (u: Ubicacion | null, e: ErrorUbicacion | null) => void;
 class VigilanteGps {
   private id: number | null = null;
   private mejor: Ubicacion | null = null;
+  private lecturas: Ubicacion[] = [];
   private error: ErrorUbicacion | null = null;
   private oyentes = new Set<Oyente>();
 
@@ -76,13 +77,7 @@ class VigilanteGps {
     }
     this.error = null;
     this.id = navigator.geolocation.watchPosition(
-      (p) => {
-        const u = { lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy), hora: Date.now() };
-        const vieja = !this.mejor || Date.now() - this.mejor.hora > 60000;
-        if (vieja || u.precision <= this.mejor!.precision) this.mejor = u;
-        this.error = null;
-        this.avisar();
-      },
+      (p) => this.recibir(p),
       (e) => {
         if (e.code === e.PERMISSION_DENIED) {
           this.error = "denegada";
@@ -93,7 +88,31 @@ class VigilanteGps {
         }
         this.avisar();
       },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 },
+    );
+  }
+
+  private recibir(p: GeolocationPosition) {
+    const u = { lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy), hora: Date.now() };
+    // Se guardan las lecturas de los últimos 2 minutos; cada medición elige entre las suyas
+    this.lecturas = [...this.lecturas.filter((l) => u.hora - l.hora < 120000), u];
+    this.mejor = u;
+    this.error = null;
+    this.avisar();
+  }
+
+  /**
+   * Pide una posición nueva en este momento. Hace falta porque, con el celular quieto,
+   * el seguimiento no siempre manda lecturas por sí solo.
+   */
+  pedirNueva() {
+    if (!ubicacionDisponible() || this.error === "denegada") return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => this.recibir(p),
+      () => {
+        /* el seguimiento informa los errores */
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 },
     );
   }
 
@@ -118,27 +137,46 @@ class VigilanteGps {
     };
   }
 
-  /** La mejor lectura si es reciente (menos de 2 minutos). */
+  /** La última lectura, si tiene menos de 20 segundos. */
   actual() {
-    return this.mejor && Date.now() - this.mejor.hora < 120000 ? this.mejor : null;
+    return this.mejor && Date.now() - this.mejor.hora < 20000 ? this.mejor : null;
   }
 
-  /** Espera una lectura con la precisión pedida, o la mejor que haya al vencer el plazo. */
-  esperar(maxMs: number, suficiente = 30): Promise<Ubicacion | null> {
+  /**
+   * La lectura que representa dónde está la persona: la más reciente con buena precisión
+   * desde `desde`; si ninguna es buena, la más precisa de ese rato.
+   */
+  private mejorDesde(desde: number, suficiente = 25) {
+    const nuevas = this.lecturas.filter((l) => l.hora >= desde);
+    const buenas = nuevas.filter((l) => l.precision <= suficiente);
+    if (buenas.length) return buenas[buenas.length - 1];
+    return nuevas.reduce<Ubicacion | null>((a, l) => (!a || l.precision < a.precision ? l : a), null);
+  }
+
+  /**
+   * Espera lecturas NUEVAS (tomadas después de `desde`, el toque de "Medir"): así una medición
+   * nunca hereda la posición de la anterior. Termina con una lectura de la precisión pedida
+   * o, al vencer el plazo, con la mejor que haya llegado.
+   */
+  esperar(maxMs: number, suficiente = 25, desdeToque = Date.now()): Promise<Ubicacion | null> {
+    // Cuentan las lecturas desde 5 s antes del toque: ya reflejan dónde está parada la persona
+    const desde = desdeToque - 5000;
+    this.pedirNueva();
     return new Promise((resolver) => {
-      const ya = this.actual();
+      const ya = this.mejorDesde(desde, suficiente);
       if (ya && ya.precision <= suficiente) return resolver(ya);
-      if (this.error === "denegada" || this.error === "no-disponible") return resolver(ya);
+      if (this.error === "denegada" || this.error === "no-disponible") return resolver(null);
       let quitar = () => {};
       const t = setTimeout(() => {
         quitar();
-        resolver(this.actual());
+        resolver(this.mejorDesde(desde, suficiente));
       }, maxMs);
-      quitar = this.escuchar((u, e) => {
-        if ((u && u.precision <= suficiente) || e === "denegada") {
+      quitar = this.escuchar((_u, e) => {
+        const m = this.mejorDesde(desde, suficiente);
+        if ((m && m.precision <= suficiente) || e === "denegada") {
           clearTimeout(t);
           queueMicrotask(() => quitar());
-          resolver(u ?? this.actual());
+          resolver(m);
         }
       });
     });

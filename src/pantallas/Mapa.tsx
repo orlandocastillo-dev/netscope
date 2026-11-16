@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapaReal } from "../componentes/MapaReal";
+import { MapaReal, margen } from "../componentes/MapaReal";
 import { Plano } from "../componentes/Plano";
 import type { Mediciones } from "../lib/almacen";
 import { colorCategoria, fecha, mbps, ms, nombreTipo, pct, promedios } from "../lib/formato";
@@ -23,6 +23,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
   const [lugar, setLugar] = useState<string>("");
   const [filtro, setFiltro] = useState<Filtro>("wifi");
   const [activo, setActivo] = useState<Medicion | null>(null);
+  const [editando, setEditando] = useState(false);
 
   // Se abre en el lugar con más mediciones, que es el que se ve bien de cerca.
   // En el mapa real se puede elegir "Todos"; en el plano hace falta un lugar.
@@ -67,7 +68,17 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
           </div>
         </div>
         {real ? (
-          <MapaReal puntos={puntos} activo={activo?.id} onTocarPunto={setActivo} />
+          <MapaReal
+            puntos={puntos}
+            activo={activo?.id}
+            editando={editando ? activo?.id : null}
+            onTocarPunto={(m) => (setActivo(m), setEditando(false))}
+            onMover={(m, lat, lng) => {
+              const movida = { ...m, lat, lng, ajustada: true, origen: m.origen ?? { lat: m.lat!, lng: m.lng! } };
+              setActivo(movida);
+              datos.guardar(movida);
+            }}
+          />
         ) : (
           <Plano puntos={puntos} calor activo={activo?.id} onTocarPunto={setActivo} etiqueta={`Mapa de cobertura de ${lugar}`} />
         )}
@@ -93,7 +104,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
                 <strong>{nombreTipo(activo)}</strong>
                 <small>{fecha(activo.fecha)}</small>
               </div>
-              <button type="button" className="boton-icono" onClick={() => setActivo(null)} aria-label="Cerrar detalle">
+              <button type="button" className="boton-icono" onClick={() => (setActivo(null), setEditando(false))} aria-label="Cerrar detalle">
                 ×
               </button>
             </div>
@@ -123,6 +134,29 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
                 <dd>{activo.senal == null ? "—" : `${activo.senal} dBm`}</dd>
               </div>
             </dl>
+            {real && activo.lat != null && (
+              <div className="ajuste">
+                {editando ? (
+                  <>
+                    <p className="nota">
+                      Arrastra el punto al lugar exacto donde mediste. Solo se mueve dentro del círculo: es el margen de error del GPS (±{margen(activo)} m).
+                    </p>
+                    <button type="button" className="pildora" onClick={() => setEditando(false)}>
+                      Listo
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="nota">
+                      {activo.ajustada ? "Punto ajustado a mano dentro del margen del GPS." : `El GPS ubicó esta medición con un margen de ±${margen(activo)} m. Adentro de una casa, cuartos vecinos pueden quedar casi en el mismo punto.`}
+                    </p>
+                    <button type="button" className="pildora pildora--suave" onClick={() => setEditando(true)}>
+                      Ajustar el punto
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </section>
         ) : (
           <section className="tarjeta">

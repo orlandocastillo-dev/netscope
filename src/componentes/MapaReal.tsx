@@ -88,12 +88,29 @@ class CapaCalor extends L.Layer {
   }
 }
 
-export function MapaReal({ puntos, activo, onTocarPunto }: { puntos: Medicion[]; activo?: string | null; onTocarPunto: (m: Medicion) => void }) {
+/** El margen dentro del cual se puede mover un punto: la precisión del GPS, con un mínimo de 15 m. */
+export const margen = (m: Medicion) => Math.max(15, m.precision ?? 15);
+
+export function MapaReal({
+  puntos,
+  activo,
+  onTocarPunto,
+  editando,
+  onMover,
+}: {
+  puntos: Medicion[];
+  activo?: string | null;
+  onTocarPunto: (m: Medicion) => void;
+  editando?: string | null;
+  onMover?: (m: Medicion, lat: number, lng: number) => void;
+}) {
   const caja = useRef<HTMLDivElement>(null);
   const mapa = useRef<L.Map | null>(null);
   const capas = useRef<L.LayerGroup | null>(null);
   const tocar = useRef(onTocarPunto);
   tocar.current = onTocarPunto;
+  const mover = useRef(onMover);
+  mover.current = onMover;
   const encuadrado = useRef("");
 
   useEffect(() => {
@@ -122,15 +139,38 @@ export function MapaReal({ puntos, activo, onTocarPunto }: { puntos: Medicion[];
     if (!puntos.length) return;
     g.addLayer(new CapaCalor(puntos));
     for (const p of puntos) {
+      const editable = p.id === editando;
+      // Margen de error del GPS de la medición elegida
+      if (p.id === activo && p.precision != null) {
+        const centro = p.origen ?? { lat: p.lat!, lng: p.lng! };
+        L.circle([centro.lat, centro.lng], { radius: margen(p), color: "#ffffff", weight: 1.5, opacity: 0.6, fillColor: "#ffffff", fillOpacity: 0.06, dashArray: "4 6", interactive: false }).addTo(g);
+      }
       const icono = L.divIcon({
         className: "",
-        html: `<span class="marcador${p.id === activo ? " marcador--activo" : ""}" style="background:${colorPuntaje(p.puntaje)}">${p.puntaje}</span>`,
+        html: `<span class="marcador${p.id === activo ? " marcador--activo" : ""}${editable ? " marcador--editable" : ""}" style="background:${colorPuntaje(p.puntaje)}">${p.puntaje}</span>`,
         iconSize: [26, 26],
         iconAnchor: [13, 13],
       });
-      L.marker([p.lat!, p.lng!], { icon: icono, keyboard: true, title: `Puntaje ${p.puntaje}` })
+      const marca = L.marker([p.lat!, p.lng!], { icon: icono, keyboard: true, title: `Puntaje ${p.puntaje}`, draggable: editable, zIndexOffset: editable ? 1000 : 0 })
         .on("click", () => tocar.current(p))
         .addTo(g);
+      if (editable) {
+        const origen = L.latLng(p.origen?.lat ?? p.lat!, p.origen?.lng ?? p.lng!);
+        const radio = margen(p);
+        // No se deja salir del margen del GPS: si se pasa, el punto vuelve al borde del círculo
+        marca.on("drag", () => {
+          const pos = marca.getLatLng();
+          const d = m.distance(origen, pos);
+          if (d > radio) {
+            const f = radio / d;
+            marca.setLatLng([origen.lat + (pos.lat - origen.lat) * f, origen.lng + (pos.lng - origen.lng) * f]);
+          }
+        });
+        marca.on("dragend", () => {
+          const pos = marca.getLatLng();
+          mover.current?.(p, pos.lat, pos.lng);
+        });
+      }
     }
     // Se encuadra solo cuando cambia el conjunto de puntos, no al elegir uno
     const clave = puntos.map((p) => p.id).join();
@@ -138,7 +178,7 @@ export function MapaReal({ puntos, activo, onTocarPunto }: { puntos: Medicion[];
       encuadrado.current = clave;
       m.fitBounds(L.latLngBounds(puntos.map((p) => [p.lat!, p.lng!])), { padding: [30, 30], maxZoom: 20 });
     }
-  }, [puntos, activo]);
+  }, [puntos, activo, editando]);
 
   return <div className="mapa-real" ref={caja} role="region" aria-label="Mapa de cobertura sobre el plano de la zona" />;
 }

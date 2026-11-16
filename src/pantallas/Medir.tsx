@@ -45,6 +45,8 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   const [gpsPedido, setGpsPedido] = useState(false);
   const [esperandoGps, setEsperandoGps] = useState(false);
   const [preguntando, setPreguntando] = useState(false);
+  // Momento del toque de "Medir": solo cuentan lecturas del GPS tomadas desde ahí
+  const [desde, setDesde] = useState(0);
   const [nombre, setNombre] = useState(prefs.lugar ?? "");
   const [progreso, setProgreso] = useState<Progreso | null>(null);
   const [pings, setPings] = useState<number[]>([]);
@@ -82,6 +84,7 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   /** Primer toque: se pregunta el lugar y, en el mismo toque, se enciende el GPS (así el navegador pide permiso). */
   const preguntar = () => {
     if (falta) return;
+    setDesde(Date.now());
     if (conGps) {
       gps.iniciar();
       setGpsPedido(true);
@@ -112,9 +115,10 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
     }
     try {
       // La prueba y el GPS corren a la vez; si la prueba termina primero, se espera al GPS (hasta 30 s)
-      const esperaGps = conGps ? gps.esperar(30000) : Promise.resolve(null);
+      let gpsListo = false;
+      const esperaGps = conGps ? gps.esperar(30000, 25, desde).then((u) => ((gpsListo = true), u)) : Promise.resolve(null);
       const r = await medirRed(servidor, ligera, avisar);
-      if (conGps && !gps.actual()) setEsperandoGps(true);
+      if (conGps && !gpsListo) setEsperandoGps(true);
       const u = await esperaGps;
       setEsperandoGps(false);
       const m = completar({

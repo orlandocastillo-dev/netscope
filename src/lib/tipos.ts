@@ -20,6 +20,10 @@ export interface Medicion {
   lng: number | null;
   /** Radio de incertidumbre del GPS, en metros. */
   precision: number | null;
+  /** La persona movió el punto a mano, dentro del margen de error del GPS. */
+  ajustada?: boolean;
+  /** Dónde la puso el GPS, para no dejar mover el punto más allá de su margen de error. */
+  origen?: { lat: number; lng: number };
   /** Punto en el plano (de 0 a 1), solo cuando no hubo GPS y se marcó a mano. */
   x: number | null;
   y: number | null;

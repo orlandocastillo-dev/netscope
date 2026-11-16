@@ -110,6 +110,7 @@ app.post("/api/mediciones", express.json({ limit: "32kb" }), (req, res) => {
     lat: m.lat ?? null,
     lng: m.lng ?? null,
     precision: m.precision ?? null,
+    ...(m.ajustada && m.origen && numero(m.origen.lat, -90, 90) && numero(m.origen.lng, -180, 180) ? { ajustada: true, origen: { lat: m.origen.lat, lng: m.origen.lng } } : {}),
     x: m.x ?? null,
     y: m.y ?? null,
     latencia: m.latencia,
