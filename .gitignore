@@ -3,3 +3,5 @@ dist
 datos
 *.log
 .taste-skill
+# Entregables locales (incluyen capturas con ubicación real): no se suben
+docs/entregable/
