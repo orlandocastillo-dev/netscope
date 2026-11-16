@@ -15,9 +15,14 @@ export interface Medicion {
   lugar: string;
   tipo: TipoRed;
   tecnologia: Tecnologia;
-  /** Punto en el plano, de 0 a 1 en cada eje. */
-  x: number;
-  y: number;
+  /** Ubicación GPS, cuando el navegador la entrega. */
+  lat: number | null;
+  lng: number | null;
+  /** Radio de incertidumbre del GPS, en metros. */
+  precision: number | null;
+  /** Punto en el plano (de 0 a 1), solo cuando no hubo GPS y se marcó a mano. */
+  x: number | null;
+  y: number | null;
   latencia: number;
   jitter: number;
   perdida: number;

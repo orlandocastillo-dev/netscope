@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapaReal } from "../componentes/MapaReal";
 import { Plano } from "../componentes/Plano";
 import type { Mediciones } from "../lib/almacen";
 import { colorPuntaje, fecha, mbps, ms, nombreTipo, pct, promedios } from "../lib/formato";
@@ -7,29 +8,41 @@ import type { Medicion } from "../lib/tipos";
 
 type Filtro = "wifi" | "movil" | "todas";
 
+/** Dentro de Claude las imágenes de otros sitios (las calles del mapa) no cargan: ahí se usa el plano. */
+const hayMapaReal = () => !(window as unknown as { claude?: unknown }).claude;
+
 export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => void }) {
+  const real = useMemo(hayMapaReal, []);
+  // Con mapa real cuentan los puntos con GPS; sin él, los marcados en el plano
+  const ubicables = useMemo(() => datos.lista.filter((m) => (real ? m.lat != null : m.x != null)), [datos.lista, real]);
   const lugares = useMemo(() => {
     const cuenta = new Map<string, number>();
-    datos.lista.forEach((m) => cuenta.set(m.lugar, (cuenta.get(m.lugar) ?? 0) + 1));
+    ubicables.forEach((m) => cuenta.set(m.lugar, (cuenta.get(m.lugar) ?? 0) + 1));
     return [...cuenta.entries()].sort((a, b) => b[1] - a[1]).map(([l]) => l);
-  }, [datos.lista]);
+  }, [ubicables]);
   const [lugar, setLugar] = useState<string>("");
   const [filtro, setFiltro] = useState<Filtro>("wifi");
   const [activo, setActivo] = useState<Medicion | null>(null);
 
+  // Se abre en el lugar con más mediciones, que es el que se ve bien de cerca.
+  // En el mapa real se puede elegir "Todos"; en el plano hace falta un lugar.
+  const elegido = useRef(false);
   useEffect(() => {
-    if (!lugares.includes(lugar)) setLugar(lugares[0] ?? "");
-  }, [lugares, lugar]);
+    if (lugar && !lugares.includes(lugar)) setLugar("");
+    if ((!elegido.current || !real) && !lugar && lugares.length) setLugar(lugares[0]);
+  }, [lugares, lugar, real]);
 
   const puntos = useMemo(
-    () => datos.lista.filter((m) => m.lugar === lugar && (filtro === "todas" || m.tipo === filtro)),
-    [datos.lista, lugar, filtro],
+    () => ubicables.filter((m) => (!lugar || m.lugar === lugar) && (filtro === "todas" || m.tipo === filtro)),
+    [ubicables, lugar, filtro],
   );
   const resumen = promedios(puntos);
   const mejor = puntos.reduce<Medicion | null>((a, m) => (!a || m.puntaje > a.puntaje ? m : a), null);
   const peor = puntos.reduce<Medicion | null>((a, m) => (!a || m.puntaje < a.puntaje ? m : a), null);
+  const sinUbicar = datos.lista.length - ubicables.length;
 
-  if (!lugares.length) return <Vacio irAMedir={irAMedir} />;
+  if (!ubicables.length)
+    return <Vacio irAMedir={irAMedir} texto={datos.lista.length ? "Ninguna medición tiene ubicación todavía." : "Todavía no hay mediciones."} />;
 
   return (
     <div className="mapa">
@@ -37,7 +50,8 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
         <div className="filtros">
           <label className="campo campo--linea">
             <span>Lugar</span>
-            <select value={lugar} onChange={(e) => (setLugar(e.target.value), setActivo(null))}>
+            <select value={lugar} onChange={(e) => ((elegido.current = true), setLugar(e.target.value), setActivo(null))}>
+              {real && <option value="">Todos</option>}
               {lugares.map((l) => (
                 <option key={l}>{l}</option>
               ))}
@@ -52,14 +66,21 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
             ))}
           </div>
         </div>
-        <Plano puntos={puntos} calor activo={activo?.id} onTocarPunto={setActivo} etiqueta={`Mapa de cobertura de ${lugar}`} />
+        {real ? (
+          <MapaReal puntos={puntos} activo={activo?.id} onTocarPunto={setActivo} />
+        ) : (
+          <Plano puntos={puntos} calor activo={activo?.id} onTocarPunto={setActivo} etiqueta={`Mapa de cobertura de ${lugar}`} />
+        )}
         <div className="leyenda" aria-hidden="true">
           <span>Baja</span>
           <i />
           <span>Buena</span>
         </div>
         <p className="nota">
-          El color entre puntos se estima por distancia inversa: cerca de un punto malo, la zona se ve mala. Donde no se ha medido, el mapa se desvanece.
+          {real
+            ? "Cada círculo es una medición en el sitio donde se hizo. El color entre puntos se estima por distancia inversa y se desvanece donde no se ha medido."
+            : "El color entre puntos se estima por distancia inversa: cerca de un punto malo, la zona se ve mala. Donde no se ha medido, el mapa se desvanece."}
+          {sinUbicar > 0 && ` ${sinUbicar} medición${sinUbicar === 1 ? "" : "es"} sin ubicación no aparece${sinUbicar === 1 ? "" : "n"} aquí, pero sí en el comparador.`}
         </p>
       </section>
 
@@ -107,7 +128,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
           </section>
         ) : (
           <section className="tarjeta">
-            <h2 className="tarjeta__titulo">{lugar}</h2>
+            <h2 className="tarjeta__titulo">{lugar || "Todos los lugares"}</h2>
             {puntos.length ? (
               <>
                 <p className="grande" style={{ color: colorPuntaje(resumen.puntaje) }}>
@@ -126,7 +147,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
                 <p className="nota">Toca un punto del mapa para ver su detalle.</p>
               </>
             ) : (
-              <p className="nota">No hay mediciones de este tipo en {lugar}.</p>
+              <p className="nota">No hay mediciones de este tipo{lugar ? ` en ${lugar}` : ""}.</p>
             )}
           </section>
         )}

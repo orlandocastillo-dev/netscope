@@ -35,7 +35,7 @@ function pintarCalor(ctx: CanvasRenderingContext2D, w: number, h: number, puntos
       let cerca = Infinity;
       for (const p of puntos) {
         // Las distancias se miden en el plano real (4:3), no en el cuadrado 0..1
-        const d2 = (x - p.x) ** 2 + ((y - p.y) * PROPORCION) ** 2;
+        const d2 = (x - p.x!) ** 2 + ((y - p.y!) * PROPORCION) ** 2;
         cerca = Math.min(cerca, d2);
         const w = 1 / Math.max(d2, 1e-5);
         suma += w * p.puntaje;
@@ -114,8 +114,8 @@ export function Plano({ puntos, calor = false, seleccion, onElegir, onTocarPunto
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const p of puntos) {
-      const x = p.x * w;
-      const y = p.y * h;
+      const x = p.x! * w;
+      const y = p.y! * h;
       ctx.beginPath();
       ctx.arc(x, y, p.id === activo ? r * 1.25 : r, 0, Math.PI * 2);
       ctx.fillStyle = colorPuntaje(p.puntaje);
@@ -150,7 +150,7 @@ export function Plano({ puntos, calor = false, seleccion, onElegir, onTocarPunto
     const y = (e.clientY - b.top) / b.height;
     if (onTocarPunto) {
       const r = Math.max(9, Math.min(15, b.width / 42)) * 1.6;
-      const cerca = puntos.find((p) => Math.hypot((p.x - x) * b.width, (p.y - y) * b.height) < r);
+      const cerca = puntos.find((p) => Math.hypot((p.x! - x) * b.width, (p.y! - y) * b.height) < r);
       if (cerca) return onTocarPunto(cerca);
     }
     if (onElegir) {

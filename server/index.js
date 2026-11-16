@@ -79,7 +79,9 @@ function validar(m) {
   if (typeof m?.lugar !== "string" || !m.lugar.trim() || m.lugar.length > 60) errores.push("lugar: texto de 1 a 60 caracteres");
   if (!["wifi", "movil"].includes(m?.tipo)) errores.push("tipo: 'wifi' o 'movil'");
   if (!["", "3G", "4G", "5G"].includes(m?.tecnologia ?? "")) errores.push("tecnologia: '', '3G', '4G' o '5G'");
-  if (!numero(m?.x, 0, 1) || !numero(m?.y, 0, 1)) errores.push("x, y: entre 0 y 1");
+  if ((m?.x != null || m?.y != null) && (!numero(m?.x, 0, 1) || !numero(m?.y, 0, 1))) errores.push("x, y: entre 0 y 1, o null");
+  if ((m?.lat != null || m?.lng != null) && (!numero(m?.lat, -90, 90) || !numero(m?.lng, -180, 180))) errores.push("lat, lng: coordenadas válidas, o null");
+  if (m?.precision != null && !numero(m.precision, 0, 100000)) errores.push("precision: metros, número positivo o null");
   if (!numero(m?.latencia, 0, 60000)) errores.push("latencia: ms, número positivo");
   if (!numero(m?.jitter, 0, 60000)) errores.push("jitter: ms, número positivo");
   if (!numero(m?.perdida, 0, 100)) errores.push("perdida: entre 0 y 100");
@@ -105,8 +107,11 @@ app.post("/api/mediciones", express.json({ limit: "32kb" }), (req, res) => {
     lugar: m.lugar.trim(),
     tipo: m.tipo,
     tecnologia: m.tipo === "movil" ? m.tecnologia ?? "" : "",
-    x: m.x,
-    y: m.y,
+    lat: m.lat ?? null,
+    lng: m.lng ?? null,
+    precision: m.precision ?? null,
+    x: m.x ?? null,
+    y: m.y ?? null,
     latencia: m.latencia,
     jitter: m.jitter,
     perdida: m.perdida,

@@ -39,13 +39,13 @@ export function promedios(lista: Medicion[]) {
 }
 
 export function csv(lista: Medicion[]) {
-  const cols = ["fecha", "lugar", "tipo", "tecnologia", "x", "y", "latencia_ms", "jitter_ms", "perdida_pct", "descarga_mbps", "subida_mbps", "senal_dbm", "estabilidad", "puntaje", "prueba_ligera", "ejemplo", "servidor"];
+  const cols = ["fecha", "lugar", "tipo", "tecnologia", "latitud", "longitud", "precision_m", "plano_x", "plano_y", "latencia_ms", "jitter_ms", "perdida_pct", "descarga_mbps", "subida_mbps", "senal_dbm", "estabilidad", "puntaje", "prueba_ligera", "ejemplo", "servidor"];
   const celda = (v: unknown) => {
     const s = v == null ? "" : String(v);
     return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const filas = lista.map((m) =>
-    [m.fecha, m.lugar, m.tipo, m.tecnologia, m.x.toFixed(3), m.y.toFixed(3), m.latencia, m.jitter, m.perdida, m.descarga, m.subida, m.senal, m.estabilidad, m.puntaje, m.ligera ? "si" : "no", m.ejemplo ? "si" : "no", m.servidor]
+    [m.fecha, m.lugar, m.tipo, m.tecnologia, m.lat, m.lng, m.precision, m.x, m.y, m.latencia, m.jitter, m.perdida, m.descarga, m.subida, m.senal, m.estabilidad, m.puntaje, m.ligera ? "si" : "no", m.ejemplo ? "si" : "no", m.servidor]
       .map(celda)
       .join(","),
   );

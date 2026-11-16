@@ -20,12 +20,6 @@ const desdeHash = (): Id => {
   return (PANTALLAS.some((p) => p.id === h) ? h : "medir") as Id;
 };
 
-const MODO = {
-  cargando: { texto: "Conectando…", titulo: "" },
-  claude: { texto: "Compartido en Claude", titulo: "Las mediciones se guardan en la base de datos de esta página: todo el equipo ve las mismas." },
-  servidor: { texto: "Servidor NetScope", titulo: "Las mediciones se guardan en la base de datos del servidor del proyecto." },
-  local: { texto: "Solo este navegador", titulo: "No hay servidor: las mediciones quedan guardadas únicamente en este navegador." },
-};
 
 export function App() {
   const [pantalla, setPantalla] = useState<Id>(desdeHash);
@@ -63,10 +57,6 @@ export function App() {
             <small>Calidad de Wi-Fi y datos móviles</small>
           </span>
         </a>
-        <span className={`modo modo--${datos.modo}`} title={MODO[datos.modo].titulo}>
-          <i aria-hidden="true" />
-          {MODO[datos.modo].texto}
-        </span>
       </header>
 
       <nav className="pestanas" aria-label="Pantallas">

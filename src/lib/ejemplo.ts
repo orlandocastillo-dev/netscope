@@ -16,6 +16,22 @@ function azar(semilla: number) {
 
 const redondear = (v: number, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
 
+/** Pasa un punto del plano (0..1) a coordenadas, en un rectángulo de `ancho` x `alto` metros. */
+function geo(origen: { lat: number; lng: number }, ancho: number, alto: number, x: number, y: number) {
+  const mLat = 111320;
+  const mLng = 111320 * Math.cos((origen.lat * Math.PI) / 180);
+  return {
+    lat: redondear(origen.lat - (y * alto) / mLat, 6),
+    lng: redondear(origen.lng + (x * ancho) / mLng, 6),
+    precision: 8,
+    x: redondear(x, 3),
+    y: redondear(y, 3),
+  };
+}
+// Esquinas superiores izquierdas de los dos lugares de ejemplo, cerca de la CUC en Barranquilla
+const CASA = { lat: 10.99702, lng: -74.79132 };
+const BIBLIOTECA = { lat: 10.99415, lng: -74.79262 };
+
 export function datosDeEjemplo(): Medicion[] {
   const r = azar(42);
   const salida: Medicion[] = [];
@@ -41,8 +57,7 @@ export function datosDeEjemplo(): Medicion[] {
               lugar: "Casa (ejemplo)",
               tipo: "wifi",
               tecnologia: "",
-              x,
-              y,
+              ...geo(CASA, 40, 30, x, y),
               latencia: redondear(6 + (1 - calidadWifi) * 140 + r() * 8),
               jitter: redondear(1 + (1 - calidadWifi) * 30 + r() * 3),
               perdida: redondear(calidadWifi < 0.25 ? 2 + r() * 4 : calidadWifi < 0.45 ? r() * 1.5 : 0),
@@ -69,8 +84,7 @@ export function datosDeEjemplo(): Medicion[] {
               lugar: "Casa (ejemplo)",
               tipo: "movil",
               tecnologia: tec,
-              x,
-              y,
+              ...geo(CASA, 40, 30, x, y),
               latencia: redondear(es5g ? 16 + r() * 8 : 38 + r() * 25),
               jitter: redondear(es5g ? 3 + r() * 3 : 8 + r() * 9),
               perdida: redondear(r() < 0.15 ? r() * 1.2 : 0),
@@ -98,8 +112,7 @@ export function datosDeEjemplo(): Medicion[] {
           lugar: "Biblioteca (ejemplo)",
           tipo: "wifi",
           tecnologia: "",
-          x,
-          y,
+          ...geo(BIBLIOTECA, 50, 37, x, y),
           latencia: redondear(70 + r() * 90),
           jitter: redondear(18 + r() * 25),
           perdida: redondear(0.5 + r() * 3),
@@ -117,8 +130,7 @@ export function datosDeEjemplo(): Medicion[] {
           lugar: "Biblioteca (ejemplo)",
           tipo: "movil",
           tecnologia: "4G",
-          x: x + 0.04,
-          y: y + 0.04,
+          ...geo(BIBLIOTECA, 50, 37, x + 0.04, y + 0.04),
           latencia: redondear(35 + r() * 20),
           jitter: redondear(6 + r() * 6),
           perdida: 0,
