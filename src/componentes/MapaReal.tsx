@@ -99,8 +99,7 @@ export function MapaReal({ puntos, activo, onTocarPunto }: { puntos: Medicion[];
   useEffect(() => {
     if (!caja.current) return;
     const m = L.map(caja.current, { zoomControl: true, attributionControl: true }).setView([10.9939, -74.7926], 17);
-    const oscuro = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${oscuro ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',

@@ -2,3 +2,4 @@ node_modules
 dist
 datos
 *.log
+.taste-skill

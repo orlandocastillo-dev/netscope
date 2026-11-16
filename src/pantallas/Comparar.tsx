@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Mediciones } from "../lib/almacen";
-import { colorPuntaje, mbps, ms, pct, promedios } from "../lib/formato";
+import { mbps, ms, pct, promedios } from "../lib/formato";
+import { categoria } from "../lib/puntaje";
 import type { Medicion } from "../lib/tipos";
 import { Vacio } from "./Mapa";
 
@@ -81,8 +82,12 @@ export function Comparar({ datos, irAMedir }: { datos: Mediciones; irAMedir: () 
         <div className="duelo" role="table" aria-label="Promedios de Wi-Fi y datos móviles">
           <div className="duelo__fila duelo__fila--cabeza" role="row">
             <span role="columnheader">Parámetro</span>
-            <span role="columnheader">Wi-Fi · {wifi.n}</span>
-            <span role="columnheader">Móvil · {movil.n}</span>
+            <span role="columnheader" className="serie serie--wifi">
+              Wi-Fi <small>{wifi.n}</small>
+            </span>
+            <span role="columnheader" className="serie serie--movil">
+              Móvil <small>{movil.n}</small>
+            </span>
           </div>
           {PARAMETROS.map((p) => {
             const a = wifi[p.clave];
@@ -174,7 +179,5 @@ export function Comparar({ datos, irAMedir }: { datos: Mediciones; irAMedir: () 
 }
 
 export const Puntos = ({ v }: { v: number }) => (
-  <span className="puntos" style={{ background: colorPuntaje(v) }}>
-    {Math.round(v)}
-  </span>
+  <span className={`pastilla pastilla--${categoria(v)}`}>{Math.round(v)}</span>
 );

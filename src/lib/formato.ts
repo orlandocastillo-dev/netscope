@@ -11,16 +11,19 @@ export const fecha = (iso: string) =>
 export const nombreTipo = (m: Pick<Medicion, "tipo" | "tecnologia">) =>
   m.tipo === "wifi" ? "Wi-Fi" : m.tecnologia ? `Móvil ${m.tecnologia}` : "Datos móviles";
 
-/** Color del puntaje: rojo (0) → ámbar (50) → verde (100). Igual en el mapa, el medidor y las tablas. */
+/** Color del puntaje: rojo (0) → ámbar (50) → lima (100). Igual en el dial, el mapa y las listas. */
 export function colorPuntaje(p: number, alfa = 1) {
   const t = Math.min(1, Math.max(0, p / 100));
   const rojo = [229, 72, 77];
-  const ambar = [245, 165, 36];
-  const verde = [48, 164, 108];
-  const [a, b, u] = t < 0.5 ? [rojo, ambar, t / 0.5] : [ambar, verde, (t - 0.5) / 0.5];
+  const ambar = [229, 169, 59];
+  const lima = [198, 242, 78];
+  const [a, b, u] = t < 0.5 ? [rojo, ambar, t / 0.5] : [ambar, lima, (t - 0.5) / 0.5];
   const c = a.map((v, i) => Math.round(v + (b[i] - v) * u));
   return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alfa})`;
 }
+
+/** Color fijo de cada categoría (buena, regular, baja), para pastillas y marcas. */
+export const colorCategoria = (p: number) => (p >= 70 ? "var(--positive)" : p >= 40 ? "var(--warning)" : "var(--negative)");
 
 const promedio = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 

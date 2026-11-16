@@ -87,7 +87,9 @@ async function medirDescarga(srv: ServidorPruebas, ligera: boolean, avisar: (p: 
     }
   }
   const s = (performance.now() - t0) / 1000;
-  return { mbps: (bytes * 8) / Math.max(s, 0.001) / 1e6, bytes };
+  const final = (bytes * 8) / Math.max(s, 0.001) / 1e6;
+  avisar({ fase: "descarga", avance: 0.7, valor: final, unidad: "Mbps" });
+  return { mbps: final, bytes };
 }
 
 async function medirSubida(url: string, ligera: boolean, avisar: (p: Progreso) => void) {

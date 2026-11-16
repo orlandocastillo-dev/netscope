@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Medidor } from "../componentes/Medidor";
+import { Medidor, Traza } from "../componentes/Medidor";
 import { Plano } from "../componentes/Plano";
 import { completar, type Mediciones } from "../lib/almacen";
-import { dbm, mbps, ms, pct } from "../lib/formato";
+import { colorCategoria, dbm, mbps, ms, pct } from "../lib/formato";
 import { infoNavegador, medirRed, type Fase, type Progreso } from "../lib/medicion";
 import { categoria, explicaciones, NOMBRE_CATEGORIA } from "../lib/puntaje";
 import type { ServidorPruebas } from "../lib/servidor";
@@ -43,9 +43,12 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   const [punto, setPunto] = useState<{ x: number; y: number } | null>(null);
   const [ubic, setUbic] = useState<EstadoUbicacion>({ estado: "esperando" });
   const [progreso, setProgreso] = useState<Progreso | null>(null);
+  const [pings, setPings] = useState<number[]>([]);
+  const [curva, setCurva] = useState<number[]>([]);
   const [resultado, setResultado] = useState<Medicion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consumo, setConsumo] = useState<number | null>(null);
+  const [ajustes, setAjustes] = useState(false);
 
   useEffect(() => {
     if (tipo === "movil") setLigera(true);
@@ -58,12 +61,21 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   const senalNum = senal.trim() === "" ? null : Number(senal);
   const senalMala = senalNum != null && (!Number.isFinite(senalNum) || senalNum > -20 || senalNum < -130);
   // Sin GPS (por ejemplo, dentro de Claude) hace falta marcar el punto en el plano
-  const falta = !servidor ? "Preparando el servidor de pruebas…" : !conGps && !punto ? "Marca abajo, en el plano, dónde estás." : senalMala ? "Revisa la intensidad de señal en Más detalles." : null;
+  const falta = !servidor ? "Preparando el servidor de pruebas…" : !conGps && !punto ? "Marca abajo, en el plano, dónde estás." : senalMala ? "Revisa la intensidad de señal en los ajustes." : null;
+
+  const avisar = (p: Progreso) => {
+    setProgreso(p);
+    if (p.fase === "latencia" && p.valor != null) setPings((x) => [...x, p.valor!]);
+    if (p.fase === "descarga" && p.valor != null) setCurva((x) => [...x, p.valor!]);
+  };
 
   const empezar = async () => {
     if (falta || !servidor) return;
     setError(null);
     setResultado(null);
+    setPings([]);
+    setCurva([]);
+    setAjustes(false);
     try {
       localStorage.setItem(PREFS, JSON.stringify({ lugar: lugar.trim() }));
     } catch {
@@ -81,7 +93,7 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           .catch((e: ErrorUbicacion) => setUbic({ estado: "error", e })))
       : Promise.resolve();
     try {
-      const [r] = await Promise.all([medirRed(servidor, ligera, setProgreso), buscar]);
+      const [r] = await Promise.all([medirRed(servidor, ligera, avisar), buscar]);
       const u = ubicacion as Ubicacion | null;
       const m = completar({
         lugar: lugarFinal,
@@ -117,135 +129,157 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   };
 
   const valorVivo = progreso && progreso.fase !== "listo" ? progreso.valor ?? null : null;
+  const hallazgos = resultado ? explicaciones(resultado) : [];
+  const nombreConexion = tipo === "wifi" ? "Wi-Fi" : `Datos móviles${tecnologia ? ` ${tecnologia}` : ""}`;
+  const textoUbicacion = !conGps
+    ? punto
+      ? "Marcada en el plano"
+      : "Márcala en el plano"
+    : ubic.estado === "buscando"
+      ? "Buscando…"
+      : ubic.estado === "lista"
+        ? `Lista, ±${ubic.u.precision} m`
+        : ubic.estado === "error"
+          ? "No disponible"
+          : "Se toma al medir";
 
   return (
     <div className="medir">
-      <section className="tarjeta medir__principal" aria-live="polite">
+      <section className="instrumento" aria-labelledby="t-medir" aria-live="polite">
+        <h2 id="t-medir" className="solo-lector">
+          Medir la conexión
+        </h2>
         {resultado && !midiendo ? (
-          <Resultado m={resultado} consumo={consumo} />
+          <>
+            <Medidor valor={resultado.puntaje} etiqueta={`Calidad ${NOMBRE_CATEGORIA[categoria(resultado.puntaje)].toLowerCase()}`} tono={colorCategoria(resultado.puntaje)} />
+            <p className="hallazgo">{hallazgos[0].texto}</p>
+          </>
         ) : (
-          <div className="medir__vivo">
-            <Medidor
-              valor={valorVivo}
-              maximo={progreso?.unidad === "ms" ? 300 : 100}
-              etiqueta={progreso ? NOMBRE_FASE[progreso.fase] : "Mide la calidad de tu conexión"}
-              unidad={progreso?.unidad}
-              color={progreso ? "var(--acento)" : undefined}
-            />
-            {midiendo && (
-              <div className="barra" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((progreso?.avance ?? 0) * 100)}>
-                <span style={{ width: `${(progreso?.avance ?? 0) * 100}%` }} />
-              </div>
-            )}
-          </div>
+          <Medidor
+            valor={valorVivo}
+            maximo={progreso?.unidad === "ms" ? 300 : 100}
+            etiqueta={progreso ? NOMBRE_FASE[progreso.fase] : "¿Qué tan buena es la conexión aquí?"}
+            unidad={progreso?.unidad}
+            tono={progreso ? "var(--text)" : undefined}
+          />
         )}
+        {(midiendo || resultado) && <Traza pings={pings} descarga={curva} />}
         {error && <p className="alerta">{error}</p>}
-
-        <button type="button" className="boton boton--grande boton--medir" onClick={empezar} disabled={!!falta || midiendo}>
+        <button type="button" className="pildora pildora--grande" onClick={empezar} disabled={!!falta || midiendo}>
           {midiendo ? "Midiendo…" : resultado ? "Medir otra vez" : "Medir mi conexión"}
         </button>
         {falta && !midiendo && <p className="ayuda centro">{falta}</p>}
+      </section>
 
-        <ul className="chips" aria-label="Datos de la medición">
-          <li>
-            <span className="chips__icono" aria-hidden="true">
-              {tipo === "wifi" ? "📶" : "📱"}
-            </span>
-            {tipo === "wifi" ? "Wi-Fi" : `Datos móviles${tecnologia ? ` ${tecnologia}` : ""}`}
-            {detectada === tipo && <small>detectado</small>}
-          </li>
-          <li>
-            <span className="chips__icono" aria-hidden="true">
-              📍
-            </span>
-            {!conGps
-              ? punto
-                ? "Punto marcado en el plano"
-                : "Sin GPS: marca el punto"
-              : ubic.estado === "buscando"
-                ? "Buscando tu ubicación…"
-                : ubic.estado === "lista"
-                  ? `Ubicación lista (±${ubic.u.precision} m)`
-                  : ubic.estado === "error"
-                    ? "Sin ubicación"
-                    : "Tu ubicación se toma al medir"}
-          </li>
-          <li>
-            <span className="chips__icono" aria-hidden="true">
-              🏷️
-            </span>
-            {lugarFinal}
-          </li>
-        </ul>
-        {ubic.estado === "error" && <p className="ayuda centro">{MENSAJE_UBICACION[ubic.e]} La medición se guarda igual, sin punto en el mapa.</p>}
-        {ubic.estado === "lista" && ubic.u.precision > 40 && (
-          <p className="ayuda centro">El GPS está impreciso (±{ubic.u.precision} m). En interiores pasa seguido: acércate a una ventana para más precisión.</p>
-        )}
-
-        <details className="detalles">
-          <summary>Más detalles (opcional)</summary>
-          <fieldset className="campo">
-            <legend>Conexión</legend>
-            <div className="segmentado" role="radiogroup">
-              {(["wifi", "movil"] as TipoRed[]).map((t) => (
-                <label key={t} className={tipo === t ? "activo" : undefined}>
-                  <input type="radio" name="tipo" value={t} checked={tipo === t} onChange={() => setTipo(t)} disabled={midiendo} />
-                  {t === "wifi" ? "Wi-Fi" : "Datos móviles"}
-                </label>
+      {resultado && !midiendo && (
+        <section className="bloque" aria-labelledby="t-cifras">
+          <h2 id="t-cifras" className="bloque__titulo">
+            Resultado
+          </h2>
+          <dl className="filas">
+            <Fila nombre="Latencia" valor={ms(resultado.latencia)} />
+            <Fila nombre="Jitter" valor={ms(resultado.jitter)} />
+            <Fila nombre="Pérdida" valor={pct(resultado.perdida)} />
+            <Fila nombre="Descarga" valor={mbps(resultado.descarga)} />
+            <Fila nombre="Subida" valor={resultado.subida == null ? "No se mide aquí" : mbps(resultado.subida)} tenue={resultado.subida == null} />
+            <Fila nombre="Estabilidad" valor={`${resultado.estabilidad} %`} />
+            {resultado.senal != null && <Fila nombre="Señal" valor={dbm(resultado.senal)} />}
+          </dl>
+          {hallazgos.length > 1 && (
+            <ul className="avisos">
+              {hallazgos.slice(1).map((e) => (
+                <li key={e.texto} className={`aviso aviso--${e.tono}`}>
+                  {e.texto}
+                </li>
               ))}
-            </div>
-            {!detectada && <small className="ayuda">Este navegador no dice qué conexión usas: elígela tú.</small>}
-          </fieldset>
-          {tipo === "movil" && (
+            </ul>
+          )}
+          {consumo != null && <p className="nota">Usó {consumo.toFixed(1)} MB de datos y quedó guardada en el historial.</p>}
+        </section>
+      )}
+
+      <section className="bloque" aria-labelledby="t-prueba">
+        <div className="bloque__cabeza">
+          <h2 id="t-prueba" className="bloque__titulo">
+            Esta prueba
+          </h2>
+          <button type="button" className="enlace" onClick={() => setAjustes(!ajustes)} aria-expanded={ajustes} disabled={midiendo}>
+            {ajustes ? "Listo" : "Ajustar"}
+          </button>
+        </div>
+        <dl className="filas">
+          <Fila nombre="Conexión" valor={nombreConexion} nota={detectada === tipo ? "detectada" : undefined} />
+          <Fila nombre="Ubicación" valor={textoUbicacion} />
+          <Fila nombre="Lugar" valor={lugarFinal} />
+          <Fila nombre="Tipo de prueba" valor={ligera ? "Ligera, ~1,5 MB" : servidor?.subida ? "Normal, ~7 MB" : "Normal, ~5 MB"} />
+        </dl>
+        {ubic.estado === "error" && <p className="nota">{MENSAJE_UBICACION[ubic.e]} La medición se guarda igual, sin punto en el mapa.</p>}
+        {ubic.estado === "lista" && ubic.u.precision > 40 && <p className="nota">El GPS está impreciso (±{ubic.u.precision} m). En interiores pasa seguido: acércate a una ventana.</p>}
+
+        {ajustes && (
+          <div className="ajustes">
             <fieldset className="campo">
-              <legend>Tecnología de la red</legend>
-              <div className="segmentado segmentado--pequeno" role="radiogroup">
-                {(["", "3G", "4G", "5G"] as Tecnologia[]).map((t) => (
-                  <label key={t || "nose"} className={tecnologia === t ? "activo" : undefined}>
-                    <input type="radio" name="tec" checked={tecnologia === t} onChange={() => setTecnologia(t)} disabled={midiendo} />
-                    {t || "No sé"}
+              <legend>Conexión</legend>
+              <div className="segmentado" role="radiogroup">
+                {(["wifi", "movil"] as TipoRed[]).map((t) => (
+                  <label key={t} className={tipo === t ? "activo" : undefined}>
+                    <input type="radio" name="tipo" value={t} checked={tipo === t} onChange={() => setTipo(t)} />
+                    {t === "wifi" ? "Wi-Fi" : "Datos móviles"}
                   </label>
                 ))}
               </div>
-              <small className="ayuda">Míralo en la barra de estado del celular.</small>
+              {!detectada && <small className="ayuda">Este navegador no dice qué conexión usas: elígela tú.</small>}
             </fieldset>
-          )}
-          <label className="campo">
-            <span>Nombre del lugar</span>
-            <input list="lugares" value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Ej.: Casa, Bloque 11, Biblioteca" maxLength={60} disabled={midiendo} />
-            <datalist id="lugares">
-              {lugares.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-            <small className="ayuda">Sirve para agrupar y comparar lugares.</small>
-          </label>
-          <label className="campo">
-            <span>Intensidad de señal</span>
-            <div className="con-unidad">
-              <input inputMode="numeric" value={senal} onChange={(e) => setSenal(e.target.value.replace(/[^\d-]/g, ""))} placeholder="-65" disabled={midiendo} aria-invalid={senalMala} />
-              <span>dBm</span>
-            </div>
-            <small className={senalMala ? "ayuda ayuda--error" : "ayuda"}>
-              {senalMala ? "Debe ser un número negativo, entre -130 y -20." : "En Android: Ajustes › Acerca del teléfono › Estado. Más cerca de 0 es mejor."}
-            </small>
-          </label>
-          <label className="interruptor">
-            <input type="checkbox" checked={ligera} onChange={(e) => setLigera(e.target.checked)} disabled={midiendo} />
-            <span>
-              <strong>Prueba ligera</strong>
-              <small>{ligera ? "Gasta cerca de 1,5 MB. Ideal con datos móviles." : servidor?.subida ? "La normal gasta cerca de 7 MB." : "La normal gasta cerca de 5 MB."}</small>
-            </span>
-          </label>
-        </details>
+            {tipo === "movil" && (
+              <fieldset className="campo">
+                <legend>Tecnología de la red</legend>
+                <div className="segmentado" role="radiogroup">
+                  {(["", "3G", "4G", "5G"] as Tecnologia[]).map((t) => (
+                    <label key={t || "nose"} className={tecnologia === t ? "activo" : undefined}>
+                      <input type="radio" name="tec" checked={tecnologia === t} onChange={() => setTecnologia(t)} />
+                      {t || "No sé"}
+                    </label>
+                  ))}
+                </div>
+                <small className="ayuda">Míralo en la barra de estado del celular.</small>
+              </fieldset>
+            )}
+            <label className="campo">
+              <span>Nombre del lugar</span>
+              <input list="lugares" value={lugar} onChange={(e) => setLugar(e.target.value)} placeholder="Casa, Bloque 11, Biblioteca…" maxLength={60} />
+              <datalist id="lugares">
+                {lugares.map((l) => (
+                  <option key={l} value={l} />
+                ))}
+              </datalist>
+            </label>
+            <label className="campo">
+              <span>Intensidad de señal (opcional)</span>
+              <div className="con-unidad">
+                <input inputMode="numeric" value={senal} onChange={(e) => setSenal(e.target.value.replace(/[^\d-]/g, ""))} placeholder="-65" aria-invalid={senalMala} />
+                <span>dBm</span>
+              </div>
+              <small className={senalMala ? "ayuda ayuda--error" : "ayuda"}>
+                {senalMala ? "Debe ser un número negativo, entre -130 y -20." : "En Android: Ajustes › Acerca del teléfono › Estado."}
+              </small>
+            </label>
+            <label className="interruptor">
+              <input type="checkbox" checked={ligera} onChange={(e) => setLigera(e.target.checked)} />
+              <span>
+                Prueba ligera
+                <small>Gasta menos datos. Ideal con datos móviles.</small>
+              </span>
+            </label>
+          </div>
+        )}
       </section>
 
       {!conGps && (
-        <section className="tarjeta medir__plano" aria-labelledby="t-punto">
-          <h2 id="t-punto" className="tarjeta__titulo">
+        <section className="bloque" aria-labelledby="t-punto">
+          <h2 id="t-punto" className="bloque__titulo">
             Marca dónde estás
           </h2>
-          <p className="ayuda">En esta versión el navegador no deja usar el GPS. Toca la zona del plano donde estás parado.</p>
+          <p className="nota nota--arriba">En esta versión el navegador no deja usar el GPS. Toca la zona del plano donde estás parado.</p>
           <Plano puntos={delLugar} seleccion={punto} onElegir={midiendo ? undefined : setPunto} etiqueta="Plano del lugar para marcar el punto de medición" />
         </section>
       )}
@@ -253,51 +287,14 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   );
 }
 
-function Resultado({ m, consumo }: { m: Medicion; consumo: number | null }) {
-  const cat = categoria(m.puntaje);
+function Fila({ nombre, valor, nota, tenue }: { nombre: string; valor: string; nota?: string; tenue?: boolean }) {
   return (
-    <div className="resultado">
-      <Medidor valor={m.puntaje} etiqueta={`Calidad ${NOMBRE_CATEGORIA[cat].toLowerCase()}`} />
-      <dl className="cifras">
-        <div>
-          <dt>Latencia</dt>
-          <dd>{ms(m.latencia)}</dd>
-        </div>
-        <div>
-          <dt>Jitter</dt>
-          <dd>{ms(m.jitter)}</dd>
-        </div>
-        <div>
-          <dt>Pérdida</dt>
-          <dd>{pct(m.perdida)}</dd>
-        </div>
-        <div>
-          <dt>Descarga</dt>
-          <dd>{mbps(m.descarga)}</dd>
-        </div>
-        <div>
-          <dt>Subida</dt>
-          <dd>{mbps(m.subida)}</dd>
-        </div>
-        <div>
-          <dt>Estabilidad</dt>
-          <dd>{m.estabilidad} %</dd>
-        </div>
-        {m.senal != null && (
-          <div>
-            <dt>Señal</dt>
-            <dd>{dbm(m.senal)}</dd>
-          </div>
-        )}
-      </dl>
-      <ul className="explicaciones">
-        {explicaciones(m).map((e) => (
-          <li key={e.texto} className={`explicacion explicacion--${e.tono}`}>
-            {e.texto}
-          </li>
-        ))}
-      </ul>
-      {consumo != null && <p className="nota">Esta prueba usó {consumo.toFixed(1)} MB de datos. Quedó guardada en el historial.</p>}
+    <div className="fila">
+      <dt>{nombre}</dt>
+      <dd className={tenue ? "tenue" : undefined}>
+        {valor}
+        {nota && <small>{nota}</small>}
+      </dd>
     </div>
   );
 }

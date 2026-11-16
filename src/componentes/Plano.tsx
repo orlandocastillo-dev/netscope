@@ -121,10 +121,10 @@ export function Plano({ puntos, calor = false, seleccion, onElegir, onTocarPunto
       ctx.fillStyle = colorPuntaje(p.puntaje);
       ctx.fill();
       ctx.lineWidth = p.id === activo ? 3 : 2;
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = "#0c0d0f";
       ctx.stroke();
       if (calor) {
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = "#0c0d0f";
         ctx.fillText(String(p.puntaje), x, y + 0.5);
       }
     }
@@ -132,7 +132,7 @@ export function Plano({ puntos, calor = false, seleccion, onElegir, onTocarPunto
     if (seleccion) {
       const x = seleccion.x * w;
       const y = seleccion.y * h;
-      ctx.strokeStyle = estilo.getPropertyValue("--acento") || "#0b7a75";
+      ctx.strokeStyle = estilo.getPropertyValue("--text") || "#fff";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(x, y, r * 1.4, 0, Math.PI * 2);

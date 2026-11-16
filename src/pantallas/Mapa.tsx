@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MapaReal } from "../componentes/MapaReal";
 import { Plano } from "../componentes/Plano";
 import type { Mediciones } from "../lib/almacen";
-import { colorPuntaje, fecha, mbps, ms, nombreTipo, pct, promedios } from "../lib/formato";
+import { colorCategoria, fecha, mbps, ms, nombreTipo, pct, promedios } from "../lib/formato";
 import { categoria, NOMBRE_CATEGORIA } from "../lib/puntaje";
 import type { Medicion } from "../lib/tipos";
 
@@ -71,11 +71,11 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
         ) : (
           <Plano puntos={puntos} calor activo={activo?.id} onTocarPunto={setActivo} etiqueta={`Mapa de cobertura de ${lugar}`} />
         )}
-        <div className="leyenda" aria-hidden="true">
-          <span>Baja</span>
-          <i />
-          <span>Buena</span>
-        </div>
+        <ul className="leyenda" aria-label="Escala de colores">
+          <li className="leyenda--buena">Buena, 70 o más</li>
+          <li className="leyenda--regular">Regular, 40 a 69</li>
+          <li className="leyenda--baja">Baja, menos de 40</li>
+        </ul>
         <p className="nota">
           {real
             ? "Cada círculo es una medición en el sitio donde se hizo. El color entre puntos se estima por distancia inversa y se desvanece donde no se ha medido."
@@ -88,9 +88,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
         {activo ? (
           <section className="tarjeta detalle">
             <div className="detalle__cabeza">
-              <span className="insignia" style={{ background: colorPuntaje(activo.puntaje) }}>
-                {activo.puntaje}
-              </span>
+              <span className={`insignia pastilla--${categoria(activo.puntaje)}`}>{activo.puntaje}</span>
               <div>
                 <strong>{nombreTipo(activo)}</strong>
                 <small>{fecha(activo.fecha)}</small>
@@ -131,7 +129,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
             <h2 className="tarjeta__titulo">{lugar || "Todos los lugares"}</h2>
             {puntos.length ? (
               <>
-                <p className="grande" style={{ color: colorPuntaje(resumen.puntaje) }}>
+                <p className="grande" style={{ color: colorCategoria(resumen.puntaje) }}>
                   {Math.round(resumen.puntaje)}
                   <small> / 100 en promedio</small>
                 </p>

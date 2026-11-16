@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Mediciones } from "../lib/almacen";
 import { datosDeEjemplo } from "../lib/ejemplo";
-import { colorPuntaje, csv, fecha, mbps, ms, nombreTipo, pct } from "../lib/formato";
+import { csv, fecha, mbps, ms, nombreTipo, pct } from "../lib/formato";
 import type { Medicion } from "../lib/tipos";
 import { Puntos } from "./Comparar";
 
@@ -21,8 +21,17 @@ function useDescargas() {
 }
 
 function Grafica({ lista }: { lista: Medicion[] }) {
-  const W = 720;
-  const H = 220;
+  // El dibujo usa el ancho real del contenedor: así el texto queda del mismo tamaño en celular y computador
+  const caja = useRef<HTMLElement>(null);
+  const [W, setW] = useState(720);
+  useEffect(() => {
+    const el = caja.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [lista.length >= 2]);
+  const H = W < 500 ? 190 : 230;
   const m = { i: 34, d: 12, a: 12, b: 26 };
   if (lista.length < 2) return <p className="nota">La gráfica aparece cuando haya al menos dos mediciones.</p>;
   const t0 = new Date(lista[0].fecha).getTime();
@@ -32,7 +41,7 @@ function Grafica({ lista }: { lista: Medicion[] }) {
   const serie = (tipo: "wifi" | "movil") => lista.filter((l) => l.tipo === tipo);
   const linea = (ps: Medicion[]) => ps.map((p, i) => `${i ? "L" : "M"}${x(p.fecha).toFixed(1)},${y(p.puntaje).toFixed(1)}`).join(" ");
   return (
-    <figure className="grafica">
+    <figure className="grafica" ref={caja}>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Evolución del puntaje en el tiempo">
         {[0, 40, 70, 100].map((v) => (
           <g key={v}>
@@ -46,7 +55,7 @@ function Grafica({ lista }: { lista: Medicion[] }) {
           <g key={t} className={`grafica__serie grafica__serie--${t}`}>
             <path d={linea(serie(t))} />
             {serie(t).map((p) => (
-              <circle key={p.id} cx={x(p.fecha)} cy={y(p.puntaje)} r={4} style={{ fill: colorPuntaje(p.puntaje) }}>
+              <circle key={p.id} cx={x(p.fecha)} cy={y(p.puntaje)} r={3.5}>
                 <title>{`${nombreTipo(p)} · ${p.lugar} · ${p.puntaje} pts`}</title>
               </circle>
             ))}
@@ -62,7 +71,7 @@ function Grafica({ lista }: { lista: Medicion[] }) {
       <figcaption className="leyenda-series">
         <span className="leyenda-series__wifi">Wi-Fi</span>
         <span className="leyenda-series__movil">Datos móviles</span>
-        <span>Líneas punteadas: 40 (regular) y 70 (buena)</span>
+        <span>Guías en 40 (regular) y 70 (buena)</span>
       </figcaption>
     </figure>
   );
@@ -201,51 +210,47 @@ export function Historial({ datos }: { datos: Mediciones }) {
         {aviso && <p className="nota nota--aviso">{aviso}</p>}
 
         {recientes.length ? (
-          <div className="tabla-scroll">
-            <table className="tabla tabla--historial">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Lugar</th>
-                  <th>Conexión</th>
-                  <th>Puntaje</th>
-                  <th>Latencia</th>
-                  <th>Jitter</th>
-                  <th>Pérdida</th>
-                  <th>Descarga</th>
-                  <th>Subida</th>
-                  <th>
-                    <span className="solo-lector">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {recientes.map((m) => (
-                  <tr key={m.id}>
-                    <td>{fecha(m.fecha)}</td>
-                    <td>
-                      {m.lugar}
-                      {m.ejemplo && <span className="etiqueta">ejemplo</span>}
-                    </td>
-                    <td>{nombreTipo(m)}</td>
-                    <td>
-                      <Puntos v={m.puntaje} />
-                    </td>
-                    <td>{ms(m.latencia)}</td>
-                    <td>{ms(m.jitter)}</td>
-                    <td>{pct(m.perdida)}</td>
-                    <td>{mbps(m.descarga)}</td>
-                    <td>{mbps(m.subida)}</td>
-                    <td>
-                      <button type="button" className="boton-icono" aria-label={`Borrar medición de ${m.lugar}`} onClick={() => hacer(() => datos.borrar(m.id), "Medición borrada.")} disabled={ocupado}>
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="registros">
+            {recientes.map((m) => (
+              <li key={m.id} className="registro">
+                <Puntos v={m.puntaje} />
+                <div className="registro__texto">
+                  <p className="registro__lugar">
+                    {m.lugar}
+                    {m.ejemplo && <span className="etiqueta">ejemplo</span>}
+                  </p>
+                  <p className="registro__meta">
+                    {nombreTipo(m)} · {fecha(m.fecha)}
+                  </p>
+                </div>
+                <dl className="registro__cifras">
+                  <div>
+                    <dt>Latencia</dt>
+                    <dd>{ms(m.latencia)}</dd>
+                  </div>
+                  <div>
+                    <dt>Jitter</dt>
+                    <dd>{ms(m.jitter)}</dd>
+                  </div>
+                  <div>
+                    <dt>Pérdida</dt>
+                    <dd>{pct(m.perdida)}</dd>
+                  </div>
+                  <div>
+                    <dt>Descarga</dt>
+                    <dd>{mbps(m.descarga)}</dd>
+                  </div>
+                  <div>
+                    <dt>Subida</dt>
+                    <dd>{mbps(m.subida)}</dd>
+                  </div>
+                </dl>
+                <button type="button" className="boton-icono registro__borrar" aria-label={`Borrar medición de ${m.lugar}`} onClick={() => hacer(() => datos.borrar(m.id), "Medición borrada.")} disabled={ocupado}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         ) : (
           <p className="nota">Todavía no hay mediciones. Haz una prueba en Medir o carga los datos de ejemplo.</p>
         )}
