@@ -1371,3 +1371,77 @@ input[aria-invalid="true"] {
     min-width: 72px;
   }
 }
+
+/* Hoja "¿Dónde estás?": sube desde abajo en el celular, centrada en el computador */
+.hoja-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  animation: aparece 0.2s ease-out both;
+}
+.hoja {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 26px 20px max(20px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 14px;
+  animation: sube 0.28s ease-out both;
+}
+@media (min-width: 900px) {
+  .hoja-fondo {
+    align-items: center;
+  }
+  .hoja {
+    border-radius: 24px;
+    padding: 30px 28px;
+  }
+}
+.hoja__titulo {
+  font-size: var(--fs-title);
+}
+.hoja__texto {
+  color: var(--muted);
+  margin-top: -6px;
+}
+.hoja__campo {
+  font-size: 17px !important;
+  min-height: 52px !important;
+}
+.sugerencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sugerencia {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: var(--raised);
+  color: var(--muted);
+  font-weight: 500;
+  cursor: pointer;
+}
+.sugerencia:hover {
+  color: var(--text);
+}
+.sugerencia--activa {
+  background: var(--text);
+  color: #000;
+}
+.hoja__gps {
+  color: var(--muted);
+  font-size: 13px;
+}
+.hoja__gps--mal {
+  color: var(--pill-baja-ink);
+}
+.hoja__cancelar {
+  justify-self: center;
+  color: var(--muted);
+}

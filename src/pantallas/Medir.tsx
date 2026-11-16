@@ -7,7 +7,7 @@ import { infoNavegador, medirRed, type Fase, type Progreso } from "../lib/medici
 import { categoria, explicaciones, NOMBRE_CATEGORIA } from "../lib/puntaje";
 import type { ServidorPruebas } from "../lib/servidor";
 import type { Medicion, Tecnologia, TipoRed } from "../lib/tipos";
-import { MENSAJE_UBICACION, obtenerUbicacion, ubicacionDisponible, type ErrorUbicacion, type Ubicacion } from "../lib/ubicacion";
+import { encenderSiHayPermiso, gps, MENSAJE_UBICACION, ubicacionDisponible, type ErrorUbicacion, type Ubicacion } from "../lib/ubicacion";
 
 const NOMBRE_FASE: Record<Fase, string> = {
   preparando: "Preparando",
@@ -27,7 +27,6 @@ function leerPrefs() {
   }
 }
 
-type EstadoUbicacion = { estado: "esperando" } | { estado: "buscando" } | { estado: "lista"; u: Ubicacion } | { estado: "error"; e: ErrorUbicacion };
 
 export function Medir({ datos, servidor }: { datos: Mediciones; servidor: ServidorPruebas | null }) {
   const prefs = useMemo(leerPrefs, []);
@@ -41,7 +40,12 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
   const [senal, setSenal] = useState("");
   const [ligera, setLigera] = useState(detectada === "movil");
   const [punto, setPunto] = useState<{ x: number; y: number } | null>(null);
-  const [ubic, setUbic] = useState<EstadoUbicacion>({ estado: "esperando" });
+  const [posicion, setPosicion] = useState<Ubicacion | null>(null);
+  const [errorGps, setErrorGps] = useState<ErrorUbicacion | null>(null);
+  const [gpsPedido, setGpsPedido] = useState(false);
+  const [esperandoGps, setEsperandoGps] = useState(false);
+  const [preguntando, setPreguntando] = useState(false);
+  const [nombre, setNombre] = useState(prefs.lugar ?? "");
   const [progreso, setProgreso] = useState<Progreso | null>(null);
   const [pings, setPings] = useState<number[]>([]);
   const [curva, setCurva] = useState<number[]>([]);
@@ -54,14 +58,37 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
     if (tipo === "movil") setLigera(true);
   }, [tipo]);
 
-  const lugares = useMemo(() => [...new Set(datos.lista.map((m) => m.lugar))].sort(), [datos.lista]);
-  const lugarFinal = lugar.trim() || (conGps ? "Sin nombre" : "Mi espacio");
+  // El GPS se enciende solo si ya había permiso; si no, al primer toque de "Medir"
+  useEffect(() => {
+    if (!conGps) return;
+    encenderSiHayPermiso();
+    return gps.escuchar((u, e) => {
+      setPosicion(u);
+      setErrorGps(e);
+      if (u || e) setGpsPedido(true);
+    });
+  }, [conGps]);
+
+  // Lugares usados, del más reciente al más antiguo
+  const lugares = useMemo(() => [...new Set([...datos.lista].reverse().map((m) => m.lugar))], [datos.lista]);
+  const lugarFinal = lugar.trim() || "Sin nombre";
   const delLugar = useMemo(() => datos.lista.filter((m) => m.lugar === lugarFinal && m.x != null), [datos.lista, lugarFinal]);
-  const midiendo = progreso != null && progreso.fase !== "listo";
+  const midiendo = (progreso != null && progreso.fase !== "listo") || esperandoGps;
   const senalNum = senal.trim() === "" ? null : Number(senal);
   const senalMala = senalNum != null && (!Number.isFinite(senalNum) || senalNum > -20 || senalNum < -130);
   // Sin GPS (por ejemplo, dentro de Claude) hace falta marcar el punto en el plano
   const falta = !servidor ? "Preparando el servidor de pruebas…" : !conGps && !punto ? "Marca abajo, en el plano, dónde estás." : senalMala ? "Revisa la intensidad de señal en los ajustes." : null;
+
+  /** Primer toque: se pregunta el lugar y, en el mismo toque, se enciende el GPS (así el navegador pide permiso). */
+  const preguntar = () => {
+    if (falta) return;
+    if (conGps) {
+      gps.iniciar();
+      setGpsPedido(true);
+    }
+    setNombre(lugar || prefs.lugar || "");
+    setPreguntando(true);
+  };
 
   const avisar = (p: Progreso) => {
     setProgreso(p);
@@ -69,34 +96,29 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
     if (p.fase === "descarga" && p.valor != null) setCurva((x) => [...x, p.valor!]);
   };
 
-  const empezar = async () => {
+  const empezar = async (nombreLugar: string) => {
     if (falta || !servidor) return;
+    setPreguntando(false);
+    setLugar(nombreLugar);
     setError(null);
     setResultado(null);
     setPings([]);
     setCurva([]);
     setAjustes(false);
     try {
-      localStorage.setItem(PREFS, JSON.stringify({ lugar: lugar.trim() }));
+      localStorage.setItem(PREFS, JSON.stringify({ lugar: nombreLugar }));
     } catch {
       /* sin almacenamiento local, no pasa nada */
     }
-    // La ubicación se busca mientras corre la prueba: así no se espera dos veces
-    let ubicacion: Ubicacion | null = null;
-    const buscar = conGps
-      ? (setUbic({ estado: "buscando" }),
-        obtenerUbicacion()
-          .then((u) => {
-            ubicacion = u;
-            setUbic({ estado: "lista", u });
-          })
-          .catch((e: ErrorUbicacion) => setUbic({ estado: "error", e })))
-      : Promise.resolve();
     try {
-      const [r] = await Promise.all([medirRed(servidor, ligera, avisar), buscar]);
-      const u = ubicacion as Ubicacion | null;
+      // La prueba y el GPS corren a la vez; si la prueba termina primero, se espera al GPS (hasta 30 s)
+      const esperaGps = conGps ? gps.esperar(30000) : Promise.resolve(null);
+      const r = await medirRed(servidor, ligera, avisar);
+      if (conGps && !gps.actual()) setEsperandoGps(true);
+      const u = await esperaGps;
+      setEsperandoGps(false);
       const m = completar({
-        lugar: lugarFinal,
+        lugar: nombreLugar,
         tipo,
         tecnologia: tipo === "movil" ? tecnologia : "",
         lat: u?.lat ?? null,
@@ -135,13 +157,13 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
     ? punto
       ? "Marcada en el plano"
       : "Márcala en el plano"
-    : ubic.estado === "buscando"
-      ? "Buscando…"
-      : ubic.estado === "lista"
-        ? `Lista, ±${ubic.u.precision} m`
-        : ubic.estado === "error"
-          ? "No disponible"
-          : "Se toma al medir";
+    : posicion
+      ? `Lista, ±${posicion.precision} m`
+      : errorGps === "denegada"
+        ? "Sin permiso"
+        : gpsPedido
+          ? "Buscando…"
+          : "Se activa al medir";
 
   return (
     <div className="medir">
@@ -158,17 +180,23 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           <Medidor
             valor={valorVivo}
             maximo={progreso?.unidad === "ms" ? 300 : 100}
-            etiqueta={progreso ? NOMBRE_FASE[progreso.fase] : "¿Qué tan buena es la conexión aquí?"}
+            etiqueta={esperandoGps ? "Buscando tu ubicación…" : progreso ? NOMBRE_FASE[progreso.fase] : "¿Qué tan buena es la conexión aquí?"}
             unidad={progreso?.unidad}
             tono={progreso ? "var(--text)" : undefined}
           />
         )}
         {(midiendo || resultado) && <Traza pings={pings} descarga={curva} />}
         {error && <p className="alerta">{error}</p>}
-        <button type="button" className="pildora pildora--grande" onClick={empezar} disabled={!!falta || midiendo}>
+        <button type="button" className="pildora pildora--grande" onClick={preguntar} disabled={!!falta || midiendo}>
           {midiendo ? "Midiendo…" : resultado ? "Medir otra vez" : "Medir mi conexión"}
         </button>
         {falta && !midiendo && <p className="ayuda centro">{falta}</p>}
+        {esperandoGps && <p className="ayuda centro">La prueba terminó. Esperando al GPS para ubicar la medición en el mapa (hasta 30 s).</p>}
+        {resultado && !midiendo && conGps && resultado.lat == null && (
+          <p className="alerta">
+            Se guardó sin ubicación, así que no aparece en el mapa. {errorGps ? MENSAJE_UBICACION[errorGps] : MENSAJE_UBICACION["sin-senal"]}
+          </p>
+        )}
       </section>
 
       {resultado && !midiendo && (
@@ -213,8 +241,8 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           <Fila nombre="Lugar" valor={lugarFinal} />
           <Fila nombre="Tipo de prueba" valor={ligera ? "Ligera, ~1,5 MB" : servidor?.subida ? "Normal, ~7 MB" : "Normal, ~5 MB"} />
         </dl>
-        {ubic.estado === "error" && <p className="nota">{MENSAJE_UBICACION[ubic.e]} La medición se guarda igual, sin punto en el mapa.</p>}
-        {ubic.estado === "lista" && ubic.u.precision > 40 && <p className="nota">El GPS está impreciso (±{ubic.u.precision} m). En interiores pasa seguido: acércate a una ventana.</p>}
+        {errorGps === "denegada" && <p className="nota">{MENSAJE_UBICACION.denegada}</p>}
+        {posicion && posicion.precision > 40 && <p className="nota">El GPS está impreciso (±{posicion.precision} m). En interiores pasa seguido: acércate a una ventana.</p>}
 
         {ajustes && (
           <div className="ajustes">
@@ -273,6 +301,68 @@ export function Medir({ datos, servidor }: { datos: Mediciones; servidor: Servid
           </div>
         )}
       </section>
+
+      {preguntando && (
+        <div className="hoja-fondo" onClick={() => setPreguntando(false)}>
+          <form
+            className="hoja"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="t-donde"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (nombre.trim()) empezar(nombre.trim());
+            }}
+          >
+            <h2 id="t-donde" className="hoja__titulo">
+              ¿Dónde estás midiendo?
+            </h2>
+            <p className="hoja__texto">Ponle nombre al lugar para agruparlo en el mapa y compararlo después.</p>
+            <input
+              className="hoja__campo"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Casa, Bloque 11, Biblioteca…"
+              maxLength={60}
+              autoFocus
+              aria-label="Nombre del lugar"
+            />
+            {lugares.length > 0 && (
+              <div className="sugerencias" aria-label="Lugares usados antes">
+                {lugares.slice(0, 6).map((l) => (
+                  <button key={l} type="button" className={l === nombre.trim() ? "sugerencia sugerencia--activa" : "sugerencia"} onClick={() => setNombre(l)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="segmentado hoja__conexion" role="radiogroup" aria-label="Conexión">
+              {(["wifi", "movil"] as TipoRed[]).map((t) => (
+                <label key={t} className={tipo === t ? "activo" : undefined}>
+                  <input type="radio" name="tipo-hoja" checked={tipo === t} onChange={() => setTipo(t)} />
+                  {t === "wifi" ? "Wi-Fi" : "Datos móviles"}
+                </label>
+              ))}
+            </div>
+            {conGps && (
+              <p className={`hoja__gps${errorGps === "denegada" ? " hoja__gps--mal" : ""}`}>
+                {posicion
+                  ? `Ubicación lista (±${posicion.precision} m)`
+                  : errorGps === "denegada"
+                    ? MENSAJE_UBICACION.denegada
+                    : "Buscando tu ubicación… Si el navegador te pregunta, toca Permitir."}
+              </p>
+            )}
+            <button type="submit" className="pildora pildora--grande" disabled={!nombre.trim()}>
+              Medir aquí
+            </button>
+            <button type="button" className="enlace hoja__cancelar" onClick={() => setPreguntando(false)}>
+              Cancelar
+            </button>
+          </form>
+        </div>
+      )}
 
       {!conGps && (
         <section className="bloque" aria-labelledby="t-punto">
