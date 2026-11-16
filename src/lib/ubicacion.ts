@@ -8,6 +8,8 @@ export interface Ubicacion {
   precision: number;
   /** Momento de la lectura (ms). */
   hora: number;
+  /** Rumbo de movimiento en grados (0 = norte), solo cuando se camina. */
+  rumbo?: number | null;
 }
 
 export type ErrorUbicacion = "no-disponible" | "denegada" | "sin-senal";
@@ -93,7 +95,8 @@ class VigilanteGps {
   }
 
   private recibir(p: GeolocationPosition) {
-    const u = { lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy), hora: Date.now() };
+    const enMovimiento = (p.coords.speed ?? 0) > 0.6 && p.coords.heading != null && !Number.isNaN(p.coords.heading);
+    const u = { lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy), hora: Date.now(), rumbo: enMovimiento ? p.coords.heading : null };
     // Se guardan las lecturas de los últimos 2 minutos; cada medición elige entre las suyas
     this.lecturas = [...this.lecturas.filter((l) => u.hora - l.hora < 120000), u];
     this.mejor = u;

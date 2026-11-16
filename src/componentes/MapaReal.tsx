@@ -1,6 +1,8 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { encenderBrujula } from "../lib/brujula";
+import { encenderSiHayPermiso, gps, MENSAJE_UBICACION, ubicacionDisponible, type ErrorUbicacion, type Ubicacion } from "../lib/ubicacion";
 import { colorPuntaje } from "../lib/formato";
 import type { Medicion } from "../lib/tipos";
 
@@ -180,5 +182,107 @@ export function MapaReal({
     }
   }, [puntos, activo, editando]);
 
-  return <div className="mapa-real" ref={caja} role="region" aria-label="Mapa de cobertura sobre el plano de la zona" />;
+  /* ---------- "Estás aquí" en tiempo real ---------- */
+  const [yo, setYo] = useState<Ubicacion | null>(null);
+  const [errorYo, setErrorYo] = useState<ErrorUbicacion | null>(null);
+  const [siguiendo, setSiguiendo] = useState(false);
+  const [brujula, setBrujula] = useState<number | null>(null);
+  const marcaYo = useRef<L.Marker | null>(null);
+  const circuloYo = useRef<L.Circle | null>(null);
+  const apagarBrujula = useRef<(() => void) | null>(null);
+  const seguir = useRef(false);
+  seguir.current = siguiendo;
+
+  useEffect(() => {
+    if (!ubicacionDisponible()) return;
+    // Si el permiso ya estaba dado, el punto aparece solo
+    encenderSiHayPermiso();
+    return gps.escuchar((u, e) => {
+      setYo(u);
+      setErrorYo(e);
+    });
+  }, []);
+
+  useEffect(() => {
+    const m = mapa.current;
+    if (!m) return;
+    const soltar = () => setSiguiendo(false);
+    m.on("dragstart", soltar);
+    return () => {
+      m.off("dragstart", soltar);
+      apagarBrujula.current?.();
+    };
+  }, []);
+
+  // El punto se mueve sin redibujar el resto del mapa
+  useEffect(() => {
+    const m = mapa.current;
+    if (!m) return;
+    if (!yo) {
+      marcaYo.current?.remove();
+      circuloYo.current?.remove();
+      marcaYo.current = null;
+      circuloYo.current = null;
+      return;
+    }
+    const pos = L.latLng(yo.lat, yo.lng);
+    if (!marcaYo.current) {
+      const icono = L.divIcon({ className: "", html: '<div class="yo"><div class="yo__cono"></div><div class="yo__punto"></div></div>', iconSize: [96, 96], iconAnchor: [48, 48] });
+      circuloYo.current = L.circle(pos, { radius: yo.precision, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 0.08, interactive: false }).addTo(m);
+      marcaYo.current = L.marker(pos, { icon: icono, interactive: false, keyboard: false, zIndexOffset: 2000 }).addTo(m);
+    } else {
+      marcaYo.current.setLatLng(pos);
+      circuloYo.current?.setLatLng(pos).setRadius(yo.precision);
+    }
+    if (seguir.current) m.panTo(pos, { animate: true });
+  }, [yo]);
+
+  // La flecha: la brújula si la hay; si no, el rumbo al caminar que da el GPS
+  const rumbo = brujula ?? yo?.rumbo ?? null;
+  useEffect(() => {
+    const el = marcaYo.current?.getElement()?.querySelector<HTMLElement>(".yo__cono");
+    if (!el) return;
+    el.style.opacity = rumbo == null ? "0" : "1";
+    if (rumbo != null) el.style.transform = `rotate(${rumbo}deg)`;
+  }, [rumbo, yo]);
+
+  const activarSeguimiento = async () => {
+    gps.iniciar();
+    gps.pedirNueva();
+    setSiguiendo(true);
+    const m = mapa.current;
+    const u = gps.actual();
+    if (m && u) m.setView([u.lat, u.lng], Math.max(m.getZoom(), 19));
+    // La brújula se pide en el mismo toque (iPhone lo exige)
+    if (!apagarBrujula.current) apagarBrujula.current = await encenderBrujula(setBrujula);
+  };
+
+  // Al llegar la primera posición tras tocar el botón, se centra ahí
+  const centrado = useRef(false);
+  useEffect(() => {
+    const m = mapa.current;
+    if (siguiendo && yo && m && !centrado.current) {
+      centrado.current = true;
+      m.setView([yo.lat, yo.lng], Math.max(m.getZoom(), 19));
+    }
+    if (!siguiendo) centrado.current = false;
+  }, [siguiendo, yo]);
+
+  return (
+    <div className="mapa-real-caja">
+      <div className="mapa-real" ref={caja} role="region" aria-label="Mapa de cobertura sobre el plano de la zona" />
+      {ubicacionDisponible() && (
+        <button type="button" className={`mi-ubicacion${siguiendo ? " mi-ubicacion--activa" : ""}`} onClick={activarSeguimiento} aria-pressed={siguiendo} aria-label="Mostrar dónde estoy y seguirme">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+            <circle cx="12" cy="12" r="5.5" />
+            <circle cx="12" cy="12" r="1.8" className="mi-ubicacion__centro" />
+          </svg>
+          {siguiendo ? "Siguiéndote" : "Mi ubicación"}
+        </button>
+      )}
+      {siguiendo && errorYo === "denegada" && <p className="mapa-aviso">{MENSAJE_UBICACION.denegada} Los pasos están en Medir.</p>}
+      {siguiendo && !yo && errorYo !== "denegada" && <p className="mapa-aviso">Buscando tu ubicación…</p>}
+    </div>
+  );
 }

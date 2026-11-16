@@ -30,7 +30,8 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
   const elegido = useRef(false);
   useEffect(() => {
     if (lugar && !lugares.includes(lugar)) setLugar("");
-    if ((!elegido.current || !real) && !lugar && lugares.length) setLugar(lugares[0]);
+    // En el mapa real se abre en "Todos"; el plano necesita un lugar
+    if (!real && !lugar && lugares.length) setLugar(lugares[0]);
   }, [lugares, lugar, real]);
 
   const puntos = useMemo(
