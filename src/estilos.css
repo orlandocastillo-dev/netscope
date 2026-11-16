@@ -1475,3 +1475,8 @@ input[aria-invalid="true"] {
 .permiso .pildora {
   justify-self: start;
 }
+
+/* Calles de OpenStreetMap en modo oscuro: se invierten los tonos y se recupera el color original */
+.teselas-oscuras {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
+}

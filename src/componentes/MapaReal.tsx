@@ -99,10 +99,12 @@ export function MapaReal({ puntos, activo, onTocarPunto }: { puntos: Medicion[];
   useEffect(() => {
     if (!caja.current) return;
     const m = L.map(caja.current, { zoomControl: true, attributionControl: true }).setView([10.9939, -74.7926], 17);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // Calles de OpenStreetMap: gratis y sin clave. Se oscurecen con CSS para que combinen con la app.
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxNativeZoom: 19,
       maxZoom: 20,
-      subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      className: "teselas-oscuras",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(m);
     capas.current = L.layerGroup().addTo(m);
     mapa.current = m;
