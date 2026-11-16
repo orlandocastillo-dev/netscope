@@ -1391,6 +1391,9 @@ input[aria-invalid="true"] {
   padding: 26px 20px max(20px, env(safe-area-inset-bottom));
   display: grid;
   gap: 14px;
+  max-height: 92vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: sube 0.28s ease-out both;
 }
 @media (min-width: 900px) {
