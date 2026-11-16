@@ -21,7 +21,7 @@ export function Mapa({ datos, irAMedir }: { datos: Mediciones; irAMedir: () => v
     return [...cuenta.entries()].sort((a, b) => b[1] - a[1]).map(([l]) => l);
   }, [ubicables]);
   const [lugar, setLugar] = useState<string>("");
-  const [filtro, setFiltro] = useState<Filtro>("wifi");
+  const [filtro, setFiltro] = useState<Filtro>("todas");
   const [activo, setActivo] = useState<Medicion | null>(null);
   const [editando, setEditando] = useState(false);
 
